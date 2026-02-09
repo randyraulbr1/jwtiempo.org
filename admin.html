@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración | JW Tiempo</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="header-user">
+        <h2 id="nombreAdmin">Cargando...</h2>
+        <div class="user-info">
+            <span id="fechaActual"></span>
+            <button id="btnCerrarSesion" class="btn btn-secondary">Cerrar Sesión</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="mensaje"></div>
+
+        <!-- Filtros -->
+        <div class="filtros">
+            <div class="form-group">
+                <label for="selectAnio">Año</label>
+                <select id="selectAnio">
+                    <!-- Se llenará dinámicamente -->
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="selectMes">Mes</label>
+                <select id="selectMes">
+                    <option value="01">Enero</option>
+                    <option value="02">Febrero</option>
+                    <option value="03">Marzo</option>
+                    <option value="04">Abril</option>
+                    <option value="05">Mayo</option>
+                    <option value="06">Junio</option>
+                    <option value="07">Julio</option>
+                    <option value="08">Agosto</option>
+                    <option value="09">Septiembre</option>
+                    <option value="10">Octubre</option>
+                    <option value="11">Noviembre</option>
+                    <option value="12">Diciembre</option>
+                </select>
+            </div>
+            <button id="btnFiltrar" class="btn btn-primary">Filtrar</button>
+            <button id="btnCerrarMes" class="btn btn-danger" style="display: none;">Cerrar Mes Actual</button>
+        </div>
+
+        <!-- Estadísticas -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="statTotal">0</div>
+                <div class="stat-label">Total Publicadores</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statReportaron">0</div>
+                <div class="stat-label">Reportaron</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statPrecursores">0</div>
+                <div class="stat-label">Precursores</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statHoras">0</div>
+                <div class="stat-label">Horas Totales</div>
+            </div>
+        </div>
+
+        <!-- Tabla de Publicadores -->
+        <div class="card">
+            <h2 id="tituloPublicadores" style="color: var(--primary-blue); margin-bottom: 1.5rem;">📊 Publicadores</h2>
+            <div style="overflow-x: auto;">
+                <table id="tablaPublicadores">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Teléfono</th>
+                            <th>Predicó</th>
+                            <th>Horas</th>
+                            <th>Nota</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 2rem;">
+                                Selecciona un mes y año para ver los reportes
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tabla de Precursores -->
+        <div class="card">
+            <h2 id="tituloPrecursores" style="color: var(--primary-blue); margin-bottom: 1.5rem;">⭐ Precursores</h2>
+            <div style="overflow-x: auto;">
+                <table id="tablaPrecursores">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Teléfono</th>
+                            <th>Predicó</th>
+                            <th>Horas</th>
+                            <th>Nota</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 2rem;">
+                                Selecciona un mes y año para ver los reportes
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+        import { getDatabase, ref, get, set, child, get as getData } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+
+        // Configuración de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyCcGCZ3Sa6J4yLbPCP2XVd6MYtiKNIq8W0",
+            authDomain: "jwtiempoorg.firebaseapp.com",
+            databaseURL: "https://jwtiempoorg-default-rtdb.firebaseio.com",
+            projectId: "jwtiempoorg",
+            storageBucket: "jwtiempoorg.firebasestorage.app",
+            messagingSenderId: "58182089719",
+            appId: "1:58182089719:web:fd671c8b7320f55befccf2",
+            measurementId: "G-232M4QXQDW"
+        };
+
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+
+        // Nombres de meses
+        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        // Variables globales
+        let usuarioActual = null;
+        let datosAdmin = null;
+        let añoActual = null;
+        let mesActual = null;
+
+        // Elementos del DOM
+        const nombreAdmin = document.getElementById('nombreAdmin');
+        const fechaActual = document.getElementById('fechaActual');
+        const btnCerrarSesion = document.getElementById('btnCerrarSesion');
+        const mensajeDiv = document.getElementById('mensaje');
+        const selectAnio = document.getElementById('selectAnio');
+        const selectMes = document.getElementById('selectMes');
+        const btnFiltrar = document.getElementById('btnFiltrar');
+        const btnCerrarMes = document.getElementById('btnCerrarMes');
+        const statTotal = document.getElementById('statTotal');
+        const statReportaron = document.getElementById('statReportaron');
+        const statPrecursores = document.getElementById('statPrecursores');
+        const statHoras = document.getElementById('statHoras');
+        const tablaPublicadores = document.getElementById('tablaPublicadores');
+        const tablaPrecursores = document.getElementById('tablaPrecursores');
+        const tituloPublicadores = document.getElementById('tituloPublicadores');
+        const tituloPrecursores = document.getElementById('tituloPrecursores');
+
+        // Función para mostrar mensajes
+        function mostrarMensaje(texto, tipo) {
+            mensajeDiv.innerHTML = `<div class="mensaje ${tipo}">${texto}</div>`;
+            setTimeout(() => {
+                mensajeDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        // Verificar si es administrador
+        async function esAdministrador(uid) {
+            try {
+                const adminRef = ref(database, `admins/${uid}`);
+                const snapshot = await get(adminRef);
+                return snapshot.exists() && snapshot.val() === true;
+            } catch (error) {
+                console.error('Error al verificar admin:', error);
+                return false;
+            }
+        }
+
+        // Inicializar select de años
+        function inicializarAnios() {
+            const ahora = new Date();
+            const añoActual = ahora.getFullYear();
+            
+            selectAnio.innerHTML = '';
+            for (let i = 0; i <= 5; i++) {
+                const año = añoActual - i;
+                const option = document.createElement('option');
+                option.value = año;
+                option.textContent = año;
+                if (i === 0) option.selected = true;
+                selectAnio.appendChild(option);
+            }
+        }
+
+        // Obtener mes y año actual
+        function obtenerMesAnioActual() {
+            const ahora = new Date();
+            return {
+                año: ahora.getFullYear(),
+                mes: String(ahora.getMonth() + 1).padStart(2, '0')
+            };
+        }
+
+        // Verificar autenticación
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                window.location.href = 'admin-login.html';
+                return;
+            }
+
+            // Verificar si es admin
+            const esAdmin = await esAdministrador(user.uid);
+            if (!esAdmin) {
+                await signOut(auth);
+                window.location.href = 'admin-login.html';
+                return;
+            }
+
+            usuarioActual = user;
+
+            try {
+                // Obtener datos del admin
+                const adminSnapshot = await get(ref(database, `adminsInfo/${user.uid}`));
+                if (adminSnapshot.exists()) {
+                    datosAdmin = adminSnapshot.val();
+                    nombreAdmin.textContent = datosAdmin.nombre;
+                } else {
+                    nombreAdmin.textContent = user.email;
+                }
+
+                // Mostrar fecha actual
+                const ahora = new Date();
+                fechaActual.textContent = ahora.toLocaleDateString('es-ES', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+
+                // Inicializar años y mes actual
+                inicializarAnios();
+                const { año, mes } = obtenerMesAnioActual();
+                añoActual = año;
+                mesActual = mes;
+                selectMes.value = mes;
+
+                // Cargar datos del mes actual
+                await cargarDatos(año, mes);
+
+            } catch (error) {
+                console.error('Error al cargar datos:', error);
+                mostrarMensaje('Error al cargar los datos. Por favor, recarga la página.', 'error');
+            }
+        });
+
+        // Cargar datos del mes/año seleccionado
+        async function cargarDatos(año, mes) {
+            try {
+                // Obtener todos los usuarios
+                const usuariosRef = ref(database, 'usuarios');
+                const usuariosSnapshot = await get(usuariosRef);
+                
+                if (!usuariosSnapshot.exists()) {
+                    mostrarMensaje('No hay usuarios registrados', 'info');
+                    return;
+                }
+
+                const usuarios = usuariosSnapshot.val();
+                const reportesRef = ref(database, `reportes/${año}/${mes}`);
+                const reportesSnapshot = await get(reportesRef);
+                const reportes = reportesSnapshot.exists() ? reportesSnapshot.val() : {};
+
+                // Procesar datos
+                let totalUsuarios = 0;
+                let reportaron = 0;
+                let precursores = 0;
+                let horasTotales = 0;
+                const listaPublicadores = [];
+                const listaPrecursores = [];
+
+                for (const uid in usuarios) {
+                    const usuario = usuarios[uid];
+                    totalUsuarios++;
+
+                    const reporte = reportes[uid];
+                    if (reporte) {
+                        reportaron++;
+                        horasTotales += parseFloat(reporte.horas) || 0;
+
+                        const datosReporte = {
+                            uid: uid,
+                            nombre: reporte.nombre || usuario.nombre,
+                            telefono: usuario.telefono || '-',
+                            predico: reporte.predico || 'no',
+                            horas: reporte.horas || 0,
+                            nota: reporte.nota || '-',
+                            esPrecursor: reporte.esPrecursor || false
+                        };
+
+                        if (datosReporte.esPrecursor) {
+                            precursores++;
+                            listaPrecursores.push(datosReporte);
+                        } else {
+                            listaPublicadores.push(datosReporte);
+                        }
+                    } else {
+                        // Usuario sin reporte
+                        listaPublicadores.push({
+                            uid: uid,
+                            nombre: usuario.nombre,
+                            telefono: usuario.telefono || '-',
+                            predico: 'pendiente',
+                            horas: '-',
+                            nota: '-',
+                            esPrecursor: false
+                        });
+                    }
+                }
+
+                // Ordenar alfabéticamente
+                listaPublicadores.sort((a, b) => a.nombre.localeCompare(b.nombre));
+                listaPrecursores.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+                // Actualizar estadísticas
+                statTotal.textContent = totalUsuarios;
+                statReportaron.textContent = reportaron;
+                statPrecursores.textContent = precursores;
+                statHoras.textContent = horasTotales.toFixed(1);
+
+                // Actualizar títulos
+                tituloPublicadores.textContent = `📊 Publicadores (${reportaron} de ${totalUsuarios})`;
+                
+                const horasPrecursores = listaPrecursores.reduce((sum, p) => sum + (parseFloat(p.horas) || 0), 0);
+                tituloPrecursores.textContent = `⭐ Precursores (${precursores} - Total horas: ${horasPrecursores.toFixed(1)})`;
+
+                // Mostrar tablas
+                mostrarTablaPublicadores(listaPublicadores);
+                mostrarTablaPrecursores(listaPrecursores);
+
+                // Mostrar/ocultar botón de cerrar mes
+                const { año: añoAct, mes: mesAct } = obtenerMesAnioActual();
+                if (año == añoAct && mes == mesAct) {
+                    btnCerrarMes.style.display = 'inline-block';
+                } else {
+                    btnCerrarMes.style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error('Error al cargar datos:', error);
+                mostrarMensaje('Error al cargar los datos. Por favor, intenta nuevamente.', 'error');
+            }
+        }
+
+        // Mostrar tabla de publicadores
+        function mostrarTablaPublicadores(lista) {
+            const tbody = tablaPublicadores.querySelector('tbody');
+            
+            if (lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem;">No hay publicadores</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = lista.map(p => {
+                const estadoClass = p.predico === 'si' ? 'status-si' : p.predico === 'no' ? 'status-no' : 'status-pendiente';
+                const estadoTexto = p.predico === 'si' ? 'Sí' : p.predico === 'no' ? 'No' : 'Pendiente';
+                
+                return `
+                    <tr>
+                        <td>${p.nombre}</td>
+                        <td>${p.telefono}</td>
+                        <td><span class="${estadoClass}">${estadoTexto}</span></td>
+                        <td>${p.horas === '-' ? '-' : p.horas}</td>
+                        <td>${p.nota === '-' ? '-' : p.nota}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Mostrar tabla de precursores
+        function mostrarTablaPrecursores(lista) {
+            const tbody = tablaPrecursores.querySelector('tbody');
+            
+            if (lista.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 2rem;">No hay precursores este mes</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = lista.map(p => {
+                const estadoClass = p.predico === 'si' ? 'status-si' : 'status-no';
+                const estadoTexto = p.predico === 'si' ? 'Sí' : 'No';
+                
+                return `
+                    <tr>
+                        <td>${p.nombre}</td>
+                        <td>${p.telefono}</td>
+                        <td><span class="${estadoClass}">${estadoTexto}</span></td>
+                        <td><strong>${p.horas}</strong></td>
+                        <td>${p.nota === '-' ? '-' : p.nota}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Filtrar datos
+        btnFiltrar.addEventListener('click', async () => {
+            const año = parseInt(selectAnio.value);
+            const mes = selectMes.value;
+            await cargarDatos(año, mes);
+        });
+
+        // Cerrar mes actual
+        btnCerrarMes.addEventListener('click', async () => {
+            const { año, mes } = obtenerMesAnioActual();
+            
+            if (parseInt(selectAnio.value) !== año || selectMes.value !== mes) {
+                mostrarMensaje('Solo puedes cerrar el mes actual', 'error');
+                return;
+            }
+
+            const confirmar = confirm('¿Estás seguro de que deseas cerrar el mes actual? Esto marcará como "no reportó" a todos los publicadores que no hayan enviado su reporte.');
+            
+            if (!confirmar) return;
+
+            try {
+                // Obtener todos los usuarios
+                const usuariosRef = ref(database, 'usuarios');
+                const usuariosSnapshot = await get(usuariosRef);
+                
+                if (!usuariosSnapshot.exists()) {
+                    mostrarMensaje('No hay usuarios registrados', 'info');
+                    return;
+                }
+
+                const usuarios = usuariosSnapshot.val();
+                const reportesRef = ref(database, `reportes/${año}/${mes}`);
+                const reportesSnapshot = await get(reportesRef);
+                const reportes = reportesSnapshot.exists() ? reportesSnapshot.val() : {};
+
+                // Crear reportes automáticos para quienes no reportaron
+                let cerrados = 0;
+                for (const uid in usuarios) {
+                    if (!reportes[uid]) {
+                        const usuario = usuarios[uid];
+                        await set(ref(database, `reportes/${año}/${mes}/${uid}`), {
+                            predico: 'no',
+                            horas: 0,
+                            esPrecursor: false,
+                            nota: 'Cerrado automáticamente - No reportó',
+                            nombre: usuario.nombre,
+                            fechaEnvio: new Date().toISOString()
+                        });
+                        cerrados++;
+                    }
+                }
+
+                mostrarMensaje(`Mes cerrado exitosamente. Se cerraron ${cerrados} reportes.`, 'success');
+                
+                // Recargar datos
+                setTimeout(async () => {
+                    await cargarDatos(año, mes);
+                }, 1000);
+
+            } catch (error) {
+                console.error('Error al cerrar mes:', error);
+                mostrarMensaje('Error al cerrar el mes. Por favor, intenta nuevamente.', 'error');
+            }
+        });
+
+        // Cerrar sesión
+        btnCerrarSesion.addEventListener('click', async () => {
+            try {
+                await signOut(auth);
+                window.location.href = 'index.html';
+            } catch (error) {
+                console.error('Error al cerrar sesión:', error);
+                mostrarMensaje('Error al cerrar sesión. Por favor, intenta nuevamente.', 'error');
+            }
+        });
+    </script>
+</body>
+</html>
