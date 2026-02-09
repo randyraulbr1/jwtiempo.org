@@ -40,11 +40,6 @@
                     </div>
                 </div>
 
-                <div class="form-group" id="grupoHoras" style="display: none;">
-                    <label for="horas">Horas de Predicación *</label>
-                    <input type="number" id="horas" name="horas" min="0" step="0.5" value="0">
-                </div>
-
                 <div class="form-group" id="grupoPrecursor" style="display: none;">
                     <label>
                         <input type="checkbox" id="esPrecursorMes" name="esPrecursorMes">
@@ -52,8 +47,16 @@
                     </label>
                 </div>
 
+                <div class="form-group" id="grupoHoras" style="display: none;">
+                    <label for="horas">Horas de Predicación *</label>
+                    <input type="number" id="horas" name="horas" min="0" step="0.5" value="0">
+                </div>
+
                 <div class="form-group">
-                    <label for="nota">Nota Adicional (opcional)</label>
+                    <button type="button" id="btnAgregarNota" class="btn btn-secondary">+ Agregar nota (opcional)</button>
+                </div>
+                <div class="form-group" id="grupoNota" style="display: none;">
+                    <label for="nota">Nota</label>
                     <textarea id="nota" name="nota" placeholder="Cualquier información adicional que desees agregar..."></textarea>
                 </div>
 
@@ -73,9 +76,8 @@
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
         import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-        import { getDatabase, ref, get, set, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+        import { getDatabase, ref, get, set } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
 
-        // Configuración de Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyCcGCZ3Sa6J4yLbPCP2XVd6MYtiKNIq8W0",
             authDomain: "jwtiempoorg.firebaseapp.com",
@@ -87,19 +89,15 @@
             measurementId: "G-232M4QXQDW"
         };
 
-        // Inicializar Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const database = getDatabase(app);
 
-        // Nombres de meses en español
         const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-        // Variables globales
         let usuarioActual = null;
         let datosUsuario = null;
 
-        // Elementos del DOM
         const nombreUsuario = document.getElementById('nombreUsuario');
         const mesAnio = document.getElementById('mesAnio');
         const btnCerrarSesion = document.getElementById('btnCerrarSesion');
@@ -109,220 +107,163 @@
         const predicoNo = document.getElementById('predicoNo');
         const grupoHoras = document.getElementById('grupoHoras');
         const grupoPrecursor = document.getElementById('grupoPrecursor');
+        const grupoNota = document.getElementById('grupoNota');
+        const btnAgregarNota = document.getElementById('btnAgregarNota');
         const mensajeReporteExistente = document.getElementById('mensajeReporteExistente');
         const historialReportes = document.getElementById('historialReportes');
 
-        // Función para mostrar mensajes
         function mostrarMensaje(texto, tipo) {
             mensajeDiv.innerHTML = `<div class="mensaje ${tipo}">${texto}</div>`;
-            setTimeout(() => {
-                mensajeDiv.innerHTML = '';
-            }, 5000);
+            setTimeout(() => { mensajeDiv.innerHTML = ''; }, 5000);
         }
 
-        // Obtener mes y año actual
         function obtenerMesAnio() {
             const ahora = new Date();
-            const año = ahora.getFullYear();
-            const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-            return { año, mes, mesNombre: meses[ahora.getMonth()] };
+            return { año: ahora.getFullYear(), mes: String(ahora.getMonth() + 1).padStart(2, '0'), mesNombre: meses[ahora.getMonth()] };
         }
 
-        // Verificar autenticación
         onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                window.location.href = 'publicador-login.html';
-                return;
-            }
-
+            if (!user) { window.location.href = 'publicador-login.html'; return; }
             usuarioActual = user;
 
             try {
-                // Obtener datos del usuario
                 const userSnapshot = await get(ref(database, `usuarios/${user.uid}`));
                 if (userSnapshot.exists()) {
                     datosUsuario = userSnapshot.val();
                     nombreUsuario.textContent = datosUsuario.nombre;
                 } else {
-                    nombreUsuario.textContent = user.email;
+                    datosUsuario = { nombre: user.displayName || user.email || 'Usuario' };
+                    nombreUsuario.textContent = datosUsuario.nombre;
                 }
-
-                // Mostrar mes y año actual
-                const { año, mesNombre } = obtenerMesAnio();
-                mesAnio.textContent = `${mesNombre} ${año}`;
-
-                // Cargar reporte actual si existe
+                const { mesNombre } = obtenerMesAnio();
+                mesAnio.textContent = `${mesNombre} ${new Date().getFullYear()}`;
                 await cargarReporteActual();
-
-                // Cargar historial
                 await cargarHistorial();
-
             } catch (error) {
                 console.error('Error al cargar datos:', error);
-                mostrarMensaje('Error al cargar los datos. Por favor, recarga la página.', 'error');
+                datosUsuario = { nombre: user.email || 'Usuario' };
+                nombreUsuario.textContent = datosUsuario.nombre;
+                mesAnio.textContent = `${meses[new Date().getMonth()]} ${new Date().getFullYear()}`;
+                mostrarMensaje('Hubo un problema al cargar algunos datos. Puedes intentar enviar tu reporte.', 'info');
             }
         });
 
-        // Cargar reporte actual
         async function cargarReporteActual() {
             if (!usuarioActual) return;
-
             const { año, mes } = obtenerMesAnio();
             const reporteRef = ref(database, `reportes/${año}/${mes}/${usuarioActual.uid}`);
-
             try {
                 const snapshot = await get(reporteRef);
                 if (snapshot.exists()) {
                     const reporte = snapshot.val();
-                    
-                    // Mostrar mensaje de reporte existente
                     mensajeReporteExistente.style.display = 'block';
-
-                    // Prellenar formulario
                     if (reporte.predico === 'si') {
                         predicoSi.checked = true;
-                        grupoHoras.style.display = 'block';
-                        document.getElementById('horas').value = reporte.horas || 0;
+                        grupoPrecursor.style.display = 'block';
                         if (reporte.esPrecursor) {
                             document.getElementById('esPrecursorMes').checked = true;
-                            grupoPrecursor.style.display = 'block';
+                            grupoHoras.style.display = 'block';
+                            document.getElementById('horas').value = reporte.horas || 0;
                         }
-                    } else {
-                        predicoNo.checked = true;
-                    }
-                    document.getElementById('nota').value = reporte.nota || '';
+                    } else { predicoNo.checked = true; }
+                    if (reporte.nota) {
+                        grupoNota.style.display = 'block';
+                        document.getElementById('nota').value = reporte.nota;
+                        btnAgregarNota.textContent = '− Ocultar nota';
+                    } else { grupoNota.style.display = 'none'; document.getElementById('nota').value = ''; }
                 }
-            } catch (error) {
-                console.error('Error al cargar reporte actual:', error);
-            }
+            } catch (error) { console.error('Error al cargar reporte actual:', error); }
         }
 
-        // Cargar historial de reportes
         async function cargarHistorial() {
             if (!usuarioActual) return;
-
             const ahora = new Date();
             const historial = [];
-
-            // Obtener últimos 6 meses
             for (let i = 0; i < 6; i++) {
                 const fecha = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
                 const año = fecha.getFullYear();
                 const mes = String(fecha.getMonth() + 1).padStart(2, '0');
                 const mesNombre = meses[fecha.getMonth()];
-
                 try {
                     const reporteRef = ref(database, `reportes/${año}/${mes}/${usuarioActual.uid}`);
                     const snapshot = await get(reporteRef);
-                    
-                    if (snapshot.exists()) {
-                        const reporte = snapshot.val();
-                        historial.push({
-                            año,
-                            mes,
-                            mesNombre,
-                            ...reporte
-                        });
-                    }
-                } catch (error) {
-                    console.error(`Error al cargar reporte de ${mesNombre} ${año}:`, error);
-                }
+                    if (snapshot.exists()) historial.push({ año, mes, mesNombre, ...snapshot.val() });
+                } catch (e) {}
             }
-
-            // Mostrar historial
-            if (historial.length === 0) {
-                historialReportes.innerHTML = '<p style="text-align: center; color: var(--text-light);">No hay reportes anteriores</p>';
-            } else {
-                historialReportes.innerHTML = historial.map(reporte => `
-                    <div class="reporte-card">
-                        <h4>${reporte.mesNombre} ${reporte.año}</h4>
-                        <p><strong>Predicó:</strong> <span class="status-${reporte.predico === 'si' ? 'si' : 'no'}">${reporte.predico === 'si' ? 'Sí' : 'No'}</span></p>
-                        ${reporte.predico === 'si' ? `<p><strong>Horas:</strong> ${reporte.horas || 0}</p>` : ''}
-                        ${reporte.esPrecursor ? '<p><strong>⭐ Precursor este mes</strong></p>' : ''}
-                        ${reporte.nota ? `<p><strong>Nota:</strong> ${reporte.nota}</p>` : ''}
-                        <p style="font-size: 0.8rem; color: var(--text-light);">Enviado: ${new Date(reporte.fechaEnvio).toLocaleDateString('es-ES')}</p>
-                    </div>
-                `).join('');
-            }
+            historialReportes.innerHTML = historial.length === 0 ? '<p style="text-align: center; color: var(--text-light);">No hay reportes anteriores</p>' : historial.map(r => `<div class="reporte-card"><h4>${r.mesNombre} ${r.año}</h4><p><strong>Predicó:</strong> <span class="status-${r.predico === 'si' ? 'si' : 'no'}">${r.predico === 'si' ? 'Sí' : 'No'}</span></p>${r.predico === 'si' ? `<p><strong>Horas:</strong> ${r.horas || 0}</p>` : ''}${r.esPrecursor ? '<p><strong>⭐ Precursor este mes</strong></p>' : ''}${r.nota ? `<p><strong>Nota:</strong> ${r.nota}</p>` : ''}<p style="font-size: 0.8rem; color: var(--text-light);">Enviado: ${new Date(r.fechaEnvio).toLocaleDateString('es-ES')}</p></div>`).join('');
         }
 
-        // Mostrar/ocultar campos según selección
         predicoSi.addEventListener('change', () => {
             if (predicoSi.checked) {
-                grupoHoras.style.display = 'block';
                 grupoPrecursor.style.display = 'block';
-                document.getElementById('horas').required = true;
+                if (!document.getElementById('esPrecursorMes').checked) grupoHoras.style.display = 'none';
             }
         });
 
         predicoNo.addEventListener('change', () => {
             if (predicoNo.checked) {
-                grupoHoras.style.display = 'none';
                 grupoPrecursor.style.display = 'none';
-                document.getElementById('horas').required = false;
+                grupoHoras.style.display = 'none';
                 document.getElementById('esPrecursorMes').checked = false;
+                document.getElementById('horas').value = 0;
+                document.getElementById('horas').required = false;
             }
         });
 
-        // Enviar reporte
+        btnAgregarNota.addEventListener('click', () => {
+            if (grupoNota.style.display === 'none') {
+                grupoNota.style.display = 'block';
+                btnAgregarNota.textContent = '− Ocultar nota';
+            } else {
+                grupoNota.style.display = 'none';
+                document.getElementById('nota').value = '';
+                btnAgregarNota.textContent = '+ Agregar nota (opcional)';
+            }
+        });
+
+        document.getElementById('esPrecursorMes').addEventListener('change', () => {
+            if (document.getElementById('esPrecursorMes').checked) {
+                grupoHoras.style.display = 'block';
+                document.getElementById('horas').required = true;
+            } else {
+                grupoHoras.style.display = 'none';
+                document.getElementById('horas').value = 0;
+                document.getElementById('horas').required = false;
+            }
+        });
+
         formReporte.addEventListener('submit', async (e) => {
             e.preventDefault();
-
-            if (!usuarioActual || !datosUsuario) {
-                mostrarMensaje('Error: No se pudo verificar tu identidad. Por favor, recarga la página.', 'error');
-                return;
-            }
-
+            if (!usuarioActual) { mostrarMensaje('Error: No se pudo verificar tu identidad. Por favor, inicia sesión nuevamente.', 'error'); return; }
             const predico = document.querySelector('input[name="predico"]:checked').value;
-            const horas = predico === 'si' ? parseFloat(document.getElementById('horas').value) || 0 : 0;
             const esPrecursorMes = predico === 'si' && document.getElementById('esPrecursorMes').checked;
+            const horas = esPrecursorMes ? (parseFloat(document.getElementById('horas').value) || 0) : 0;
             const nota = document.getElementById('nota').value.trim();
-
-            // Validación
-            if (predico === 'si' && horas <= 0) {
-                mostrarMensaje('Si predicaste, debes ingresar las horas trabajadas', 'error');
-                return;
-            }
-
+            if (esPrecursorMes && horas <= 0) { mostrarMensaje('Si marcas como Precursor, debes ingresar las horas trabajadas', 'error'); return; }
             const { año, mes } = obtenerMesAnio();
-
+            const nombreReporte = (datosUsuario?.nombre) || usuarioActual?.email || 'Usuario';
             try {
-                const reporteData = {
-                    predico: predico,
-                    horas: horas,
-                    esPrecursor: esPrecursorMes,
-                    nota: nota,
-                    nombre: datosUsuario.nombre,
-                    fechaEnvio: new Date().toISOString()
-                };
-
-                await set(ref(database, `reportes/${año}/${mes}/${usuarioActual.uid}`), reporteData);
-
+                await set(ref(database, `reportes/${año}/${mes}/${usuarioActual.uid}`), { predico, horas, esPrecursor: esPrecursorMes, nota, nombre: nombreReporte, fechaEnvio: new Date().toISOString() });
                 mostrarMensaje('¡Reporte enviado exitosamente!', 'success');
-                
-                // Recargar datos
                 setTimeout(async () => {
                     await cargarReporteActual();
                     await cargarHistorial();
                     formReporte.reset();
+                    grupoPrecursor.style.display = 'none';
+                    grupoHoras.style.display = 'none';
+                    grupoNota.style.display = 'none';
+                    btnAgregarNota.textContent = '+ Agregar nota (opcional)';
+                    document.getElementById('horas').required = false;
                     mensajeReporteExistente.style.display = 'block';
                 }, 1000);
-
             } catch (error) {
                 console.error('Error al enviar reporte:', error);
                 mostrarMensaje('Error al enviar el reporte. Por favor, intenta nuevamente.', 'error');
             }
         });
 
-        // Cerrar sesión
         btnCerrarSesion.addEventListener('click', async () => {
-            try {
-                await signOut(auth);
-                window.location.href = 'index.html';
-            } catch (error) {
-                console.error('Error al cerrar sesión:', error);
-                mostrarMensaje('Error al cerrar sesión. Por favor, intenta nuevamente.', 'error');
-            }
+            try { await signOut(auth); window.location.href = 'index.html'; } catch (error) { mostrarMensaje('Error al cerrar sesión.', 'error'); }
         });
     </script>
 </body>
