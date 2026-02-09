@@ -141,8 +141,11 @@
                     mensajeError = 'El correo electrónico no es válido.';
                 } else if (error.code === 'auth/weak-password') {
                     mensajeError = 'La contraseña es muy débil.';
+                } else if (error.code === 'PERMISSION_DENIED' || error.message?.includes('permission_denied')) {
+                    mensajeError = 'Error de permisos en la base de datos. Debes configurar las reglas de seguridad en Firebase Console. Revisa el archivo database.rules.json y las instrucciones en README.';
                 }
                 
+                console.error('Error completo:', error);
                 mostrarMensaje(mensajeError, 'error');
             }
         });
